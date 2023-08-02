@@ -29,6 +29,6 @@ RUN cd /src \
   && python3 -m pip --no-cache-dir install -r requirements.txt \
   && apt autoremove -y \
   && rm -rf /src/CTCWordBeamSearch /root
-RUN rm -rf /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so.1
+RUN rm -rf /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcudadebugger.so.1
 
 WORKDIR /src/loghi-htr/src
