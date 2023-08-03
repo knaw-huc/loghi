@@ -10,7 +10,7 @@ na-pipeline-train.sh: for training new models.
 
 Install Loghi so that you can use its pipeline script.
 ```bash
-git clone git@github.com:knaw-huc/loghi.git
+git clone https://github.com/knaw-huc/loghi.git
 cd loghi
 ```
 
