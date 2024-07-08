@@ -1,0 +1,15 @@
+@inproceedings{loghi,
+  author    = {van Koert, Rutger
+               and Klut, Stefan
+               and Maas, Martijn
+               and Koornstra, Tim
+               and Peters, Luke},
+  title     = {Loghi: an end-to-end framework for making historical documents machine readable},
+  year      = {2024},
+  publisher = {Springer Nature},
+  abstract  = {Loghi is a novel framework and suite of tools for the layout analysis and text recognition of historical documents. Scans are processed in a modular pipeline, with the option to use alternative tools in most stages. Layout analysis and text recognition can be trained on example images with PageXML ground truth. The framework is intended to convert scanned documents to machine-readable PageXML. Additional tooling is provided for the creation of synthetic ground truth. A visualiser for troubleshooting the text recognition training is also made available. The result is a framework for end-to-end text recognition, which works from initial layout analysis on the scanned documents, and includes text line detection, text recognition, reading order detection and language detection. The Loghi pipeline has been used successfully in several projects. We achieve good results on the layout analysis and text recognition of both the handwritten and printed archives of the Dutch States General on resolutions spanning the 17th and 18th century. The CER on handwritten 17th century material is below 3 percent. Loghi is open source and free to use.},
+  numpages  = {16},
+  keywords  = {handwritten text recognition, layout analysis, pagexml},
+  location  = {Athens, Greece},
+  series    = {ARPC '24}
+}
