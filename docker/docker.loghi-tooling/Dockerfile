@@ -11,9 +11,9 @@ RUN apt-get  update && \
 RUN locale-gen en_US.UTF-8
 ARG LOGHI_VERSION=1.0-SNAPSHOT
 
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 ENV LOGHI_VERSION=${LOGHI_VERSION}
 
 COPY loghi-tooling /src/loghi-tooling

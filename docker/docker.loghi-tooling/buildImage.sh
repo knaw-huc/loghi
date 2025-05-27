@@ -1,7 +1,5 @@
 #!/bin/bash
 
-cp -r $HOME/.m2/repository/org/owasp/dependency-check-data ./
-
 set -e
 
 if [ -z $1 ]; then echo "first parameter should be the path of prima-core-libs" && exit 1; fi;
@@ -16,9 +14,18 @@ echo "Change to directory of script..."
 DIR_OF_SCRIPT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $DIR_OF_SCRIPT
 
+dependency_check_data_dir="$HOME/.m2/repository/org/owasp/dependency-check-data"
+
 echo "Copy files for building docker..."
 cp -r $PRIMACORELIBS .
 cp -r $LOGHITOOLING .
+if [ ! -d "$dependency_check_data_dir" ]; then
+    mkdir -p dependency-check-data
+    echo "dependency-check-data directory created (did not exist)."
+else
+    cp -r "$dependency_check_data_dir" ./
+    echo "dependency-check-data directory copied."
+fi
 
 rm -rf ./prima-core-libs/.git
 rm -rf ./prima-core-libs/target

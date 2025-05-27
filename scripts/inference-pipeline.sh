@@ -65,11 +65,6 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-tmpdir=$(mktemp -d)
-echo "Temporary directory created at: $tmpdir"
-
-mkdir -p "$tmpdir"/imagesnippets/
-mkdir -p "$tmpdir"/output
 
 DOCKERLOGHITOOLING=loghi/docker.loghi-tooling:$VERSION
 DOCKERLAYPA=loghi/docker.laypa:$VERSION
@@ -83,6 +78,12 @@ fi
 
 IMAGES_PATH=`realpath $1`
 
+tmpdir=$(mktemp -d --tmpdir=$IMAGES_PATH tmp.loghi-inference-XXXXXX)
+echo "Temporary directory created at: $tmpdir"
+
+mkdir -p "$tmpdir"/imagesnippets/
+mkdir -p "$tmpdir"/output
+
 # Housekeeping: remove any existing *.done files
 find "$IMAGES_PATH" -name '*.done' -exec rm -f "{}" \;
 
@@ -94,19 +95,16 @@ fi
 if [[ $BASELINELAYPA -eq 1 ]]; then
     echo "Running Laypa baseline detection"
 
-    LAYPA_IN=$IMAGES_PATH
-    LAYPA_OUT=$IMAGES_PATH
     LAYPADIR="$(dirname "${LAYPABASELINEMODEL}")"
 
     docker run $DOCKERGPUPARAMS --rm -it -u $(id -u "${USER}"):$(id -g "${USER}") -m 32000m --shm-size 10240m \
         -v "$LAYPADIR":"$LAYPADIR" \
-        -v "$LAYPA_IN":"$LAYPA_IN" \
-        -v "$LAYPA_OUT":"$LAYPA_OUT" \
+        -v "$IMAGES_PATH":"$IMAGES_PATH" \
         $DOCKERLAYPA \
             python run.py \
             -c $LAYPABASELINEMODEL \
-            -i "$LAYPA_IN" \
-            -o "$LAYPA_OUT" \
+            -i "$IMAGES_PATH" \
+            -o "$IMAGES_PATH" \
             --opts MODEL.WEIGHTS "" TEST.WEIGHTS $LAYPABASELINEMODELWEIGHTS | tee -a "$tmpdir"/log.txt
 
     # Check if failed
@@ -123,13 +121,12 @@ if [[ $BASELINELAYPA -eq 1 ]]; then
 
         docker run $DOCKERGPUPARAMS --rm -it -u $(id -u "${USER}"):$(id -g "${USER}") -m 32000m --shm-size 10240m \
         -v "$LAYPAREGIONDIR":"$LAYPAREGIONDIR" \
-        -v "$LAYPA_IN":"$LAYPA_IN" \
-        -v "$LAYPA_OUT":"$LAYPA_OUT" \
+        -v "$IMAGES_PATH":"$IMAGES_PATH" \
         $DOCKERLAYPA \
             python run.py \
             -c $LAYPAREGIONMODEL \
-            -i "$LAYPA_IN" \
-            -o "$LAYPA_OUT" \
+            -i "$IMAGES_PATH" \
+            -o "$IMAGES_PATH" \
             --opts MODEL.WEIGHTS "" TEST.WEIGHTS $LAYPAREGIONMODELWEIGHTS | tee -a $tmpdir/log.txt
 
         # Check if failed
@@ -144,14 +141,13 @@ if [[ $BASELINELAYPA -eq 1 ]]; then
     echo "Extracting baselines and regions"
 
     docker run --rm -u $(id -u "${USER}"):$(id -g "${USER}") \
-        -v "$LAYPA_IN":"$LAYPA_IN" \
-        -v "$LAYPA_OUT":"$LAYPA_OUT" \
+        -v "$IMAGES_PATH":"$IMAGES_PATH" \
         $DOCKERLOGHITOOLING \
             /src/loghi-tooling/minions/target/appassembler/bin/MinionExtractBaselines \
-            -input_path_image "$LAYPA_IN" \
-            -input_path_png "$LAYPA_OUT"/page/ \
-            -input_path_page "$LAYPA_OUT"/page/ \
-            -output_path_page "$LAYPA_OUT"/page/ \
+            -input_path_image "$IMAGES_PATH" \
+            -input_path_png "$IMAGES_PATH"/page/ \
+            -input_path_page "$IMAGES_PATH"/page/ \
+            -output_path_page "$IMAGES_PATH"/page/ \
             -recalculate_textline_contours_from_baselines \
             $as_single_region \
             $namespace | tee -a "$tmpdir"/log.txt
@@ -169,10 +165,10 @@ if [[ $HTRLOGHI -eq 1 ]]; then
 
     docker run -u $(id -u "${USER}"):$(id -g "${USER}") --rm \
        -v "$IMAGES_PATH"/:"$IMAGES_PATH"/ \
-       -v "$tmpdir":"$tmpdir" \
        $DOCKERLOGHITOOLING /src/loghi-tooling/minions/target/appassembler/bin/MinionCutFromImageBasedOnPageXMLNew \
            -input_path "$IMAGES_PATH" \
            -outputbase "$tmpdir"/imagesnippets/ \
+           -tmpdir "$tmpdir" \
            -output_type png \
            -channels 4 \
            -threads 4 $namespace| tee -a "$tmpdir"/log.txt
@@ -188,7 +184,6 @@ if [[ $HTRLOGHI -eq 1 ]]; then
     LOGHIDIR="$(dirname "${HTRLOGHIMODEL}")"
 
     echo docker run $DOCKERGPUPARAMS -u $(id -u "${USER}"):$(id -g "${USER}") --rm -m 32000m --shm-size 10240m -ti \
-        -v /tmp:/tmp \
         -v "$tmpdir":"$tmpdir" \
         -v "$LOGHIDIR":"$LOGHIDIR" \
         $DOCKERLOGHIHTR \
@@ -203,7 +198,6 @@ if [[ $HTRLOGHI -eq 1 ]]; then
 
 
     docker run $DOCKERGPUPARAMS -u $(id -u "${USER}"):$(id -g "${USER}") --rm -m 32000m --shm-size 10240m -ti \
-        -v /tmp:/tmp \
         -v "$tmpdir":"$tmpdir" \
         -v "$LOGHIDIR":"$LOGHIDIR" \
         $DOCKERLOGHIHTR \
@@ -226,7 +220,6 @@ if [[ $HTRLOGHI -eq 1 ]]; then
     docker run -u $(id -u "${USER}"):$(id -g "${USER}") --rm \
         -v "$LOGHIDIR":"$LOGHIDIR" \
         -v "$IMAGES_PATH"/:"$IMAGES_PATH"/ \
-        -v "$tmpdir":"$tmpdir" \
         $DOCKERLOGHITOOLING /src/loghi-tooling/minions/target/appassembler/bin/MinionLoghiHTRMergePageXML \
             -input_path "$IMAGES_PATH"/page \
             -results_file "$tmpdir"/results.txt \
@@ -242,8 +235,7 @@ if [[ $HTRLOGHI -eq 1 ]]; then
 fi
 
 # Fifth step: Recalculate reading order
-if [[ $RECALCULATEREADINGORDER -eq 1 ]]
-then
+if [[ $RECALCULATEREADINGORDER -eq 1 ]]; then
     echo "Recalculating reading order"
     clean_borders=""
 
@@ -253,7 +245,6 @@ then
     fi
     docker run -u $(id -u "${USER}"):$(id -g "${USER}") --rm \
         -v "$IMAGES_PATH"/:"$IMAGES_PATH"/ \
-        -v "$tmpdir":"$tmpdir" \
         $DOCKERLOGHITOOLING /src/loghi-tooling/minions/target/appassembler/bin/MinionRecalculateReadingOrderNew \
             -input_dir "$IMAGES_PATH"/page/ \
             -border_margin $RECALCULATEREADINGORDERBORDERMARGIN \
@@ -267,12 +258,10 @@ then
 fi
 
 
-if [[ $DETECTLANGUAGE -eq 1 ]]
-then
+if [[ $DETECTLANGUAGE -eq 1 ]]; then
     echo "Detecting language..."
     docker run -u $(id -u "${USER}"):$(id -g "${USER}") --rm \
         -v "$IMAGES_PATH"/:"$IMAGES_PATH"/ \
-        -v "$tmpdir":"$tmpdir" \
         $DOCKERLOGHITOOLING /src/loghi-tooling/minions/target/appassembler/bin/MinionDetectLanguageOfPageXml \
             -page "$IMAGES_PATH"/page/ \
             $namespace | tee -a "$tmpdir"/log.txt
@@ -283,12 +272,10 @@ then
 fi
 
 
-if [[ $SPLITWORDS -eq 1 ]]
-then
+if [[ $SPLITWORDS -eq 1 ]]; then
     echo "MinionSplitPageXMLTextLineIntoWords..."
     docker run -u $(id -u "${USER}"):$(id -g "${USER}") --rm \
         -v "$IMAGES_PATH"/:"$IMAGES_PATH"/ \
-        -v "$tmpdir":"$tmpdir" \
         $DOCKERLOGHITOOLING /src/loghi-tooling/minions/target/appassembler/bin/MinionSplitPageXMLTextLineIntoWords \
             -input_path "$IMAGES_PATH"/page/ \
             $namespace | tee -a "$tmpdir"/log.txt
