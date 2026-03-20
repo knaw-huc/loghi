@@ -41,7 +41,8 @@ RUN cd /src && \
   git checkout v2.20.0 && \
   bazel build //tensorflow/tools/pip_package:wheel --repo_env=USE_PYWRAP_RULES=1 --repo_env=WHEEL_NAME=tensorflow --config=cuda --config=cuda_wheel && \
   mkdir -p /wheels && \
-  cp /src/tensorflow/bazel-bin/tensorflow/tools/pip_package/wheel_house/*.whl /wheels/
+  cp /src/tensorflow/bazel-bin/tensorflow/tools/pip_package/wheel_house/*.whl /wheels/ && \
+  pip download --no-cache-dir -d /wheels /wheels/tensorflow-*.whl
 
 # Build CTCWordBeamSearch wheel
 RUN pip install --upgrade pip setuptools wheel pybind11 && \
@@ -59,14 +60,14 @@ RUN pip install --upgrade pip setuptools wheel pybind11 && \
 RUN git clone https://github.com/knaw-huc/loghi-htr.git /src/loghi-htr && \
   cd /src/loghi-htr/src && \
   git --git-dir=/src/loghi-htr/.git log --format="%H" -n 1 > /src/loghi-htr/src/version_info && \
-  rm -rf /src/loghi-htr/.git /src/loghi-htr/tests && \
+  rm -rf /src/loghi-htr/.git && \
   cd /src/loghi-htr && \
   sed -i 's/opencv_python==/opencv-python-headless==/' requirements.txt && \
-  pip install --upgrade pip setuptools wheel cython pkgconfig numpy==2.1.3 && \
+  pip install --upgrade pip setuptools wheel cython pkgconfig numpy==2.4.2 && \
   pip wheel --no-cache-dir -w /wheels \
-    numpy==2.1.3 \
+    numpy==2.4.2 \
     editdistance==0.8.1 \
-    keras==3.9.2 \
+    keras==3.13.2 \
     matplotlib==3.10.3 \
     opencv-python-headless==4.11.0.86 \
     tf_keras_vis==0.8.7 \
@@ -77,15 +78,15 @@ RUN git clone https://github.com/knaw-huc/loghi-htr.git /src/loghi-htr && \
     prometheus-client==0.21.1 \
     xlsxwriter==3.2.3 \
     six \
-    Pillow==10.4.0 \
+    Pillow==12.1.1 \
     "fastapi[standard]==0.115.12" \
     uvicorn==0.34.2 \
-    typing-extensions==4.13.2 \
+    typing-extensions==4.15.0 \
     psutil==7.0.0 \
     scipy==1.15.3 \
     vgslify==0.14.0 \
     python-bidi && \
-  pip wheel --no-cache-dir --no-build-isolation -w /wheels h5py==3.11.0
+  pip wheel --no-cache-dir --no-build-isolation -w /wheels h5py==3.15.1
 
 ###############################################################################
 # Stage 2: runtime – lean CUDA-only base, no pre-installed TF stack
@@ -99,13 +100,19 @@ ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 # Ensure CUDA libraries are on the linker path
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:${LD_LIBRARY_PATH}
+# Disable XLA auto-clustering JIT (requires nvptx/ptxas not in runtime image)
+#ENV TF_XLA_FLAGS="--tf_xla_auto_jit=0"
+#ENV XLA_FLAGS="--xla_gpu_enable_xla_runtime_executable=false"
 
 WORKDIR /src/
 
-# Install Python and minimal runtime OS packages
+# Install Python and minimal runtime OS packages.
+# cuda-nvrtc is needed for TF ops that use runtime compilation even when XLA
+# JIT is disabled.  libcusparse/libcublas are pulled in by the base image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 python3-pip \
   libsm6 libxext6 \
+  cuda-nvrtc-12-8 \
   locales nano libtcmalloc-minimal4t64 && \
   locale-gen en_US.UTF-8 && \
   rm -rf /var/lib/apt/lists/*
@@ -113,9 +120,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy pre-built wheels and loghi-htr source (without .git or tests) from builder
 COPY --from=builder /wheels /wheels
 COPY --from=builder /src/loghi-htr /src/loghi-htr
+# Copy CUDA nvvm device library (libdevice.10.bc) and ptxas needed by
+# TensorFlow's XLA/MLIR backend to generate GPU device code at runtime.
+COPY --from=builder /usr/local/cuda/nvvm /usr/local/cuda/nvvm
+COPY --from=builder /usr/local/cuda/bin/ptxas /usr/local/cuda/bin/ptxas
 
-# Install all Python packages from pre-built wheels
-RUN pip install --no-cache-dir --break-system-packages /wheels/*.whl && \
+# Install all Python packages from pre-built wheels, allowing pip to fetch
+# any missing transitive dependencies (e.g. absl-py, protobuf, grpcio, etc.
+# required by TensorFlow) from PyPI.
+RUN rm /wheels/wheel-* ; pip install --no-cache-dir --break-system-packages --find-links /wheels /wheels/*.whl && \
   rm -rf /wheels /root/.cache/pip /tmp/* && \
   find /usr -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null; \
   find /usr -name '*.pyc' -delete 2>/dev/null; \
