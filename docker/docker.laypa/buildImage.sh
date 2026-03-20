@@ -139,6 +139,8 @@ echo "Building docker image..."
 # docker build --squash --no-cache . -t loghi/docker.laypa
 docker build --no-cache . -t loghi/docker.laypa
 
-rm -rf laypa
+cd $DIR_OF_SCRIPT
+
+rm -rf $tmp_dir
 docker system prune -f
 # ] <-- needed because of Argbash
