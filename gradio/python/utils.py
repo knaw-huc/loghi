@@ -107,7 +107,7 @@ def check_for_segmentation_results(directory: Path, identifier: str) -> Tuple[Op
         A tuple containing the segmented image (if found), the path to the
         image (if found), and a status message indicating success or failure.
     """
-    timeout = 10  # seconds
+    timeout = 60  # seconds
     start_time = time.time()
     while time.time() - start_time < timeout:
         image_path = directory / "page" / f"{identifier}.png"
